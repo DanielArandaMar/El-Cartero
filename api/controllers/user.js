@@ -1,7 +1,11 @@
 'use strict'
 
-const User = require('../models/user');
 const bcrypt = require('bcrypt-nodejs');
+const moment = require('moment');
+const jwt = require('../services/authentication');
+const User = require('../models/user');
+const Account = require('../models/account');
+
 
 
 const controller = {
@@ -28,40 +32,75 @@ const controller = {
 
             // Validar el formato de nombre de usuario
             let FormatNickname = formatNickname(user.nickname);
-            if(!FormatNickname) displayCustom(res, 400, 'Formato de nombre de usuario incorrecto.');
+            if(!FormatNickname) return displayCustom(res, 400, 'Formato de nombre de usuario incorrecto.');
 
             
             // Comprobación del nombre de usuario
-            let ValidUsername = verifyNicknameRepeat(user.nickname).then((value)=>{
-                return value.result;
+            let VerifyNickname = verifyNicknameRepeat(user.nickname).then((value)=>{
+                return value.result
             });
-            if(!ValidUsername) displayCustom(res, 400, 'Nombre de usuario ya en uso.');
+            if(!VerifyNickname) return displayCustom(res, 400, 'Nombre de usuario ya en uso.');
+           
 
-
-            // Encriptar la contraseña
+            // Encriptar la contraseña y guardar al usuario
             formatPassword(user.password, res, 7);
-            let hash = getPasswordHash(user.password).then((value) => {
-                console.log(value.hash);
-                return value.hash;
+            getPasswordHash(user.password).then((value) => {
+                user.password = value.hash;
+                
+                // Guardar al usuario
+                user.save((err, userStored) => {
+                    if(err) return display500Error(res);
+                    if(!userStored) return display400Error(res);
+
+                    // Guardamos la cuenta
+                    saveAccount(userStored).then((value) => {
+                        return res.status(200).send({
+                            user: userStored,
+                            account: value.account
+                        });
+                    });
+                });
+                
             });
-            // user.password = hash;
-            // console.log(user.password);
-
-            // Enviar el código de comprobación al correo 
-
-            console.log(user);
-            // Guardar en la base de datos
-            user.save((err, userStored) => {
-                if(err) return display500Error(res);
-                if(!userStored) return display400Error(res);
-
-                return res.status(200).send({ user: userStored });
-            });
-
             
         } else {
             return displayCustom(res, 400, 'Por favor ingresa los campos correspondientes.');
         }
+    },
+
+    /** AUTENTICACIÓN EN LA APLICACIÓN */
+    login: function(req, res){
+        let params = req.body;
+
+        /*
+        * Parametros a obtener
+        * extraInfo -> Nombre de usuario o correo eletrónico
+        */
+        var password = params.password;
+        var extraInfo = params.nickname; 
+
+        const pipe = {$or: [{nickname: extraInfo}, {email: extraInfo}]};
+
+        User.findOne(pipe, (err, user) => {
+            if(err) return ndisplay500Error(res);
+            if(!user) return displayCustom(res, 400, 'Credenciales incorrectas');
+            
+            bcrypt.compare(password, user.password, (err, check) => {
+                if(check){
+                    /* CONTRASEÑA CORRECTA ! */
+                    if(params.getToken){
+                        return res.status(200).send({ token: jwt.createToken(user) });
+                    } else {
+                        
+                        return res.status(200).send({ user });
+                    }
+                } else {
+                    /* CONTRASEÑA INCORRECTA ! */
+                    return displayCustom(res, 400, 'Credenciales incorrectas');
+                }
+            });
+        });
+
     }
 
 };
@@ -101,6 +140,7 @@ function formatNickname(nickname){
             correctNickname = false;
         }
     }
+    if(username.length < 6) correctNickname = false;
     return correctNickname;
 }
 
@@ -124,28 +164,44 @@ async function verifyNicknameRepeat(nickname){
     return { result };
 }
 
+async function saveAccount(user){
+    let account = new Account();
+    account.user = user._id;
+    account.active = false;
+    account.recovery_mail = null;
+    account.created_at = moment().unix();
+
+    let save = await new Promise(function(resolve, reject){
+        account.save((err, account) => {
+            if(err) reject(err);
+            resolve(account);
+        });
+    });
+
+    return {
+        account: save
+    }
+}
+
 
 
 /*
 * Funciones para mostrar mensajes de códigos de error
 */
 function display500Error(res){
-    let message = 'Error en el servidor. Vuelve a intentarlo más tarde.';
-    return res.status(500).send({message});
+    res.status(500).send({message: 'Error en el servidor. Vuelve a intentarlo más tarde.'});
 }
 
 function display404Error(res){
-    let message = 'No se ha podido encontrar el contenido solicitado.';
-    return res.status(404).send({message});
+    res.status(404).send({message: 'No se ha podido encontrar el contenido solicitado.'});
 }
 
 function display400Error(res){
-    let message = 'No se ha podido interpretar la solicitud.';
-    return res.status(400).send({message});
+    res.status(400).send({message: 'No se ha podido interpretar la solicitud.'});
 }
 
 function displayCustom(res, status, message){
-    return res.status(status).send({message});
+    res.status(status).send({message});
 }
 
 
