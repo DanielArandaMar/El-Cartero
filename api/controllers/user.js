@@ -5,7 +5,7 @@ const moment = require('moment');
 const jwt = require('../services/authentication');
 const User = require('../models/user');
 const Account = require('../models/account');
-
+const Verification = require('../models/verification');
 
 
 const controller = {
@@ -48,18 +48,7 @@ const controller = {
                 user.password = value.hash;
                 
                 // Guardar al usuario
-                user.save((err, userStored) => {
-                    if(err) return display500Error(res);
-                    if(!userStored) return display400Error(res);
-
-                    // Guardamos la cuenta
-                    saveAccount(userStored).then((value) => {
-                        return res.status(200).send({
-                            user: userStored,
-                            account: value.account
-                        });
-                    });
-                });
+                saveUserInDatabase(user);
                 
             });
             
@@ -67,6 +56,9 @@ const controller = {
             return displayCustom(res, 400, 'Por favor ingresa los campos correspondientes.');
         }
     },
+
+
+    
 
     /** AUTENTICACIÓN EN LA APLICACIÓN */
     login: function(req, res){
@@ -164,21 +156,45 @@ async function verifyNicknameRepeat(nickname){
     return { result };
 }
 
-async function saveAccount(user){
-    let account = new Account();
+async function saveUserInDatabase(user){
+
+    // Guardar el 'usuario'
+    const userRegister = await new Promise(function(resolve, reject){
+        user.save((err, userStored) => {
+            if(err) reject(err);
+            resolve(userStored);
+        });
+    });
+
+
+    // Guardar el 'usuario' en 'cuentas'
+    const account = new Account();
     account.user = user._id;
     account.active = false;
     account.recovery_mail = null;
     account.created_at = moment().unix();
 
-    let save = await new Promise(function(resolve, reject){
+    const saveAcc = await new Promise(function(resolve, reject){
         account.save((err, account) => {
             if(err) reject(err);
             resolve(account);
         });
     });
 
+
+    // Guardar el usuario en 'cuentas' en verificación
+    const verification = new Verification();
+    verification.account = saveAcc._id;
+    verification.code = null;
+    verification.created_at = moment().unix();
+    const saveVerification = await new Promise(function(resolve, reject){
+        verification.save((err, verificationStored) => {
+            
+        });
+    });
+
     return {
+        user: userRegister,
         account: save
     }
 }
