@@ -1,12 +1,9 @@
 'use strict'
 
 const bcrypt = require('bcrypt-nodejs');
-const moment = require('moment');
 const jwt = require('../services/authentication');
+const saveUserService = require('../services/saveUser');
 const User = require('../models/user');
-const Account = require('../models/account');
-const Verification = require('../models/verification');
-
 
 const controller = {
 
@@ -30,27 +27,37 @@ const controller = {
             // Campos por defecto
             user.role = 'ROLE_USER';
 
-            // Validar el formato de nombre de usuario
-            let FormatNickname = formatNickname(user.nickname);
-            if(!FormatNickname) return displayCustom(res, 400, 'Formato de nombre de usuario incorrecto.');
 
+            // Validar el formato del nombre de usuario
+            const ValidateNicknameFormat = formatNickname(user.nickname);
+            if(!ValidateNicknameFormat) return displayCustom(res, 400, 'Formato de nombre de usuario incorrecto');
             
-            // Comprobación del nombre de usuario
-            let VerifyNickname = verifyNicknameRepeat(user.nickname).then((value)=>{
-                return value.result
-            });
-            if(!VerifyNickname) return displayCustom(res, 400, 'Nombre de usuario ya en uso.');
-           
 
-            // Encriptar la contraseña y guardar al usuario
+            /* 
+            *   Validar la escritura de la contraseña (formato)
+            *   Encriptar la contraseña del usuario
+            *   Validar si el 'nickname' se repite'
+            *   Guardar el usuario en la base de datos
+            */
             formatPassword(user.password, res, 7);
             getPasswordHash(user.password).then((value) => {
                 user.password = value.hash;
                 
-                // Guardar al usuario
-                saveUserInDatabase(user);
+                saveUserService.saveUserInDatabase(user).then((value) => {
+                    if(value.user != null && value.account != null && value.verification != null){
+                        return res.status(200).send({
+                            user: value.user,
+                            account: value.account,
+                            verification: value.verification
+                        });
+                    } else {
+                        return displayCustom(res, 400, 'El nombre de usuario ya esta en uso');
+                    }
+                   
+                });
                 
             });
+
             
         } else {
             return displayCustom(res, 400, 'Por favor ingresa los campos correspondientes.');
@@ -58,7 +65,6 @@ const controller = {
     },
 
 
-    
 
     /** AUTENTICACIÓN EN LA APLICACIÓN */
     login: function(req, res){
@@ -95,6 +101,9 @@ const controller = {
 
     }
 
+
+
+
 };
 
 
@@ -109,7 +118,9 @@ const controller = {
 
 
 /*
+*
 * Funciones para el registro del usuario
+*
 */
 async function getPasswordHash(password){
     let hash = await new Promise(function(resolve, reject){
@@ -125,6 +136,9 @@ async function getPasswordHash(password){
 }
 
 function formatNickname(nickname){
+    /*
+    * FALSE -> FORMATO INCORRECTO   TRUE -> FORMATO CORRECTO
+    */
     var username = nickname.toLowerCase();
     var correctNickname = true;
     for(var i = 0; i<username.length; i++){
@@ -143,66 +157,13 @@ function formatPassword(password, res, len){
     if(!haveNoCapitalizeLetter(password)) return displayCustom(res, 400, 'La contraseña no tiene minusculas.');
 }
 
-async function verifyNicknameRepeat(nickname){
-    let result = await User.find({ nickname: nickname }).exec().then((users) => {
-        if(users.length == 0) return true;
-        if(users.length >= 1) return false;
-    }).catch((err) => {
-        return handleError(err);
-    });
-    /*
-    * True -> Usuario correcto --  False -> Usuario ya en uso
-    */
-    return { result };
-}
-
-async function saveUserInDatabase(user){
-
-    // Guardar el 'usuario'
-    const userRegister = await new Promise(function(resolve, reject){
-        user.save((err, userStored) => {
-            if(err) reject(err);
-            resolve(userStored);
-        });
-    });
-
-
-    // Guardar el 'usuario' en 'cuentas'
-    const account = new Account();
-    account.user = user._id;
-    account.active = false;
-    account.recovery_mail = null;
-    account.created_at = moment().unix();
-
-    const saveAcc = await new Promise(function(resolve, reject){
-        account.save((err, account) => {
-            if(err) reject(err);
-            resolve(account);
-        });
-    });
-
-
-    // Guardar el usuario en 'cuentas' en verificación
-    const verification = new Verification();
-    verification.account = saveAcc._id;
-    verification.code = null;
-    verification.created_at = moment().unix();
-    const saveVerification = await new Promise(function(resolve, reject){
-        verification.save((err, verificationStored) => {
-            
-        });
-    });
-
-    return {
-        user: userRegister,
-        account: save
-    }
-}
 
 
 
 /*
-* Funciones para mostrar mensajes de códigos de error
+*
+* Funciones para mostrar mensajes de códigos de error http
+*
 */
 function display500Error(res){
     res.status(500).send({message: 'Error en el servidor. Vuelve a intentarlo más tarde.'});
@@ -223,7 +184,9 @@ function displayCustom(res, status, message){
 
 
 /*
-* Funciones para verificar strings
+*
+* Funciones para verificar cadenas de texto
+*
 */
 function haveCapitalizeLetter(text){
     var result = false;
