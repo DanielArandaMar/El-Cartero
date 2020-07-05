@@ -1,8 +1,9 @@
 'use strict'
 
-const User = require('../models/user');
 const bcrypt = require('bcrypt-nodejs');
-
+const jwt = require('../services/authentication');
+const saveUserService = require('../services/saveUser');
+const User = require('../models/user');
 
 const controller = {
 
@@ -26,43 +27,82 @@ const controller = {
             // Campos por defecto
             user.role = 'ROLE_USER';
 
-            // Validar el formato de nombre de usuario
-            let FormatNickname = formatNickname(user.nickname);
-            if(!FormatNickname) displayCustom(res, 400, 'Formato de nombre de usuario incorrecto.');
 
+            // Validar el formato del nombre de usuario
+            const ValidateNicknameFormat = formatNickname(user.nickname);
+            if(!ValidateNicknameFormat) return displayCustom(res, 400, 'Formato de nombre de usuario incorrecto');
             
-            // Comprobación del nombre de usuario
-            let ValidUsername = verifyNicknameRepeat(user.nickname).then((value)=>{
-                return value.result;
-            });
-            if(!ValidUsername) displayCustom(res, 400, 'Nombre de usuario ya en uso.');
 
-
-            // Encriptar la contraseña
+            /* 
+            *   Validar la escritura de la contraseña (formato)
+            *   Encriptar la contraseña del usuario
+            *   Validar si el 'nickname' se repite'
+            *   Guardar el usuario en la base de datos
+            */
             formatPassword(user.password, res, 7);
-            let hash = getPasswordHash(user.password).then((value) => {
-                console.log(value.hash);
-                return value.hash;
-            });
-            // user.password = hash;
-            // console.log(user.password);
-
-            // Enviar el código de comprobación al correo 
-
-            console.log(user);
-            // Guardar en la base de datos
-            user.save((err, userStored) => {
-                if(err) return display500Error(res);
-                if(!userStored) return display400Error(res);
-
-                return res.status(200).send({ user: userStored });
+            getPasswordHash(user.password).then((value) => {
+                user.password = value.hash;
+                
+                saveUserService.saveUserInDatabase(user).then((value) => {
+                    if(value.user != null && value.account != null && value.verification != null){
+                        return res.status(200).send({
+                            user: value.user,
+                            account: value.account,
+                            verification: value.verification
+                        });
+                    } else {
+                        return displayCustom(res, 400, 'El nombre de usuario ya esta en uso');
+                    }
+                   
+                });
+                
             });
 
             
         } else {
             return displayCustom(res, 400, 'Por favor ingresa los campos correspondientes.');
         }
+    },
+
+
+
+    /** AUTENTICACIÓN EN LA APLICACIÓN */
+    login: function(req, res){
+        let params = req.body;
+
+        /*
+        * Parametros a obtener
+        * extraInfo -> Nombre de usuario o correo eletrónico
+        */
+        var password = params.password;
+        var extraInfo = params.nickname; 
+
+        const pipe = {$or: [{nickname: extraInfo}, {email: extraInfo}]};
+
+        User.findOne(pipe, (err, user) => {
+            if(err) return ndisplay500Error(res);
+            if(!user) return displayCustom(res, 400, 'Credenciales incorrectas');
+            
+            bcrypt.compare(password, user.password, (err, check) => {
+                if(check){
+                    /* CONTRASEÑA CORRECTA ! */
+                    if(params.getToken){
+                        return res.status(200).send({ token: jwt.createToken(user) });
+                    } else {
+                        
+                        return res.status(200).send({ user });
+                    }
+                } else {
+                    /* CONTRASEÑA INCORRECTA ! */
+                    return displayCustom(res, 400, 'Credenciales incorrectas');
+                }
+            });
+        });
+
     }
+
+
+
 
 };
 
@@ -78,7 +118,9 @@ const controller = {
 
 
 /*
+*
 * Funciones para el registro del usuario
+*
 */
 async function getPasswordHash(password){
     let hash = await new Promise(function(resolve, reject){
@@ -94,6 +136,9 @@ async function getPasswordHash(password){
 }
 
 function formatNickname(nickname){
+    /*
+    * FALSE -> FORMATO INCORRECTO   TRUE -> FORMATO CORRECTO
+    */
     var username = nickname.toLowerCase();
     var correctNickname = true;
     for(var i = 0; i<username.length; i++){
@@ -101,6 +146,7 @@ function formatNickname(nickname){
             correctNickname = false;
         }
     }
+    if(username.length < 6) correctNickname = false;
     return correctNickname;
 }
 
@@ -111,47 +157,36 @@ function formatPassword(password, res, len){
     if(!haveNoCapitalizeLetter(password)) return displayCustom(res, 400, 'La contraseña no tiene minusculas.');
 }
 
-async function verifyNicknameRepeat(nickname){
-    let result = await User.find({ nickname: nickname }).exec().then((users) => {
-        if(users.length == 0) return true;
-        if(users.length >= 1) return false;
-    }).catch((err) => {
-        return handleError(err);
-    });
-    /*
-    * True -> Usuario correcto --  False -> Usuario ya en uso
-    */
-    return { result };
-}
 
 
 
 /*
-* Funciones para mostrar mensajes de códigos de error
+*
+* Funciones para mostrar mensajes de códigos de error http
+*
 */
 function display500Error(res){
-    let message = 'Error en el servidor. Vuelve a intentarlo más tarde.';
-    return res.status(500).send({message});
+    res.status(500).send({message: 'Error en el servidor. Vuelve a intentarlo más tarde.'});
 }
 
 function display404Error(res){
-    let message = 'No se ha podido encontrar el contenido solicitado.';
-    return res.status(404).send({message});
+    res.status(404).send({message: 'No se ha podido encontrar el contenido solicitado.'});
 }
 
 function display400Error(res){
-    let message = 'No se ha podido interpretar la solicitud.';
-    return res.status(400).send({message});
+    res.status(400).send({message: 'No se ha podido interpretar la solicitud.'});
 }
 
 function displayCustom(res, status, message){
-    return res.status(status).send({message});
+    res.status(status).send({message});
 }
 
 
 
 /*
-* Funciones para verificar strings
+*
+* Funciones para verificar cadenas de texto
+*
 */
 function haveCapitalizeLetter(text){
     var result = false;

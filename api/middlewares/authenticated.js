@@ -2,7 +2,7 @@
 
 const jwt = require('jwt-simple');
 const moment = require('moment');
-const secret_key = 13795523445;
+const secret_key = '13795523445';
 
 exports.auth = function(req, res, next){
     if(!req.headers.authorization) return res.status(403).send({message: 'No te haz autenticado'});
