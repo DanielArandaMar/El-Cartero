@@ -224,7 +224,7 @@ const controller = {
             const verification = new Verification();
             verification.account = accountId;
             verification.code = newCode;
-            verification.created_at = moment().unix();
+            verification.created_at = moment().add(1, 'days').unix(); 
 
             verification.save((err, verificationStored) => {
                 if(err) return HttpResponses.display500Error(res);
