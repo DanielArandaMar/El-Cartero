@@ -2,11 +2,12 @@
 
 const bcrypt = require('bcrypt-nodejs');
 const jwt = require('../services/authentication');
+const moment = require('moment');
 const saveUserService = require('../services/saveUser');
+const HttpResponses = require('../services/httpResponses');
 const User = require('../models/user');
 const Account = require('../models/account');
 const Verification = require('../models/verification');
-const verification = require('../models/verification');
 
 const controller = {
 
@@ -33,7 +34,7 @@ const controller = {
 
             // Validar el formato del nombre de usuario
             const ValidateNicknameFormat = formatNickname(user.nickname);
-            if(!ValidateNicknameFormat) return displayCustom(res, 400, 'Formato de nombre de usuario incorrecto');
+            if(!ValidateNicknameFormat) return HttpResponses.displayCustom(res, 400, 'Formato de nombre de usuario incorrecto.');
             
 
             /* 
@@ -54,7 +55,7 @@ const controller = {
                             verification: value.verification
                         });
                     } else {
-                        return displayCustom(res, 400, 'El nombre de usuario ya esta en uso');
+                        return HttpResponses.displayCustom(res, 400, 'El nombre de usuario ya esta en uso.');
                     }
                    
                 });
@@ -63,9 +64,10 @@ const controller = {
 
             
         } else {
-            return displayCustom(res, 400, 'Por favor ingresa los campos correspondientes.');
+            return HttpResponses.displayCustom(res, 400, 'Por favor ingresa los campos correspondientes.');
         }
     },
+
 
 
 
@@ -83,8 +85,8 @@ const controller = {
         const pipe = {$or: [{nickname: extraInfo}, {email: extraInfo}]};
 
         User.findOne(pipe, (err, user) => {
-            if(err) return ndisplay500Error(res);
-            if(!user) return displayCustom(res, 400, 'Credenciales incorrectas');
+            if(err) return HttpResponses.display500Error(res);
+            if(!user) return HttpResponses.displayCustom(res, 400, 'Credenciales incorrectas');
             
             bcrypt.compare(password, user.password, (err, check) => {
                 if(check){
@@ -97,7 +99,7 @@ const controller = {
                     }
                 } else {
                     /* CONTRASEÑA INCORRECTA ! */
-                    return displayCustom(res, 400, 'Credenciales incorrectas');
+                    return HttpResponses.displayCustom(res, 400, 'Credenciales incorrectas');
                 }
             });
         });
@@ -120,8 +122,8 @@ const controller = {
         delete update.nickname;
 
         User.findByIdAndUpdate(userId, update, {new: true}, (err, userUpdated) => {
-            if(err) return display500Error(res);
-            if(!userUpdated) return display400Error(res);
+            if(err) return HttpResponses.display500Error(res);
+            if(!userUpdated) return HttpResponses.display400Error(res);
             userUpdated.password = undefined;
             userUpdated.email = undefined;
             userUpdated.role = undefined;
@@ -139,23 +141,22 @@ const controller = {
         const nickname = req.body.nickname;
         const pipe = { $and: [{nickname: nickname}, {_id: {$ne: userId}}]};
 
-        if(nickname == null) return displayCustom(res, 400, 'Inserta tu nuevo nombre de usuario.');
+        if(nickname == null) return HttpResponses.displayCustom(res, 400, 'Inserta tu nuevo nombre de usuario.');
 
         // Validar el formato de nombre de usuario
         const ValidateNicknameFormat = formatNickname(nickname);
-        if(!ValidateNicknameFormat) return displayCustom(res, 400, 'Formato de nombre de usuario incorrecto.');
+        if(!ValidateNicknameFormat) return HttpResponses.displayCustom(res, 400, 'Formato de nombre de usuario incorrecto.');
 
         User.find(pipe, (err, users) => {
-            if(err) return display500Error(res);
-            console.log(users.length);
+            if(err) return HttpResponses.display500Error(res);
             /*
             * COINCIDENCIA users.length > 0    NO HAY COINCIDENCIA users.length <= 0
             */
-            if(users.length > 0) return displayCustom(res, 400, 'Nombre de usuario ya en uso.');
+            if(users.length > 0) return HttpResponses.displayCustom(res, 400, 'Nombre de usuario ya en uso.');
             // Actualizar el nombre de usuario
             User.findByIdAndUpdate(userId, {nickname: nickname}, {new: true}, (err, userUpdated) => {
-                if(err) return display500Error(res);
-                if(!userUpdated) return display400Error(res);
+                if(err) return HttpResponses.display500Error(res);
+                if(!userUpdated) return HttpResponses.display400Error(res);
                 userUpdated.password = undefined;
                 userUpdated.email = undefined;
                 userUpdated.role = undefined;
@@ -175,32 +176,33 @@ const controller = {
         const oldPassword = req.body.oldPassword;
         var newPassword = req.body.newPassword;
 
-        if(newPassword == null && oldPassword == null) return displayCustom(res, 400, 'Inserta los campos correspondientes.');
+        if(newPassword == null && oldPassword == null) return HttpResponses.displayCustom(res, 400, 'Inserta los campos correspondientes.');
 
         // Validar el formato de la contraseña
         formatPassword(newPassword, res, 7);
 
         User.findById(userId, (err, user) => {
-            if(err) return display500Error(res);
-            if(!user) return display400Error(res);
+            if(err) return HttpResponses.display500Error(res);
+            if(!user) return HttpResponses.display400Error(res);
             bcrypt.compare(oldPassword, user.password, (err, check) => {
                 if(check){
                     // Actualizar la contraseña
                     getPasswordHash(newPassword).then((value) => {
                         newPassword = value.hash;
                         User.findByIdAndUpdate(userId, {password: newPassword}, {new: true}, (err, userUpdated) => {
-                            if(err) return display500Error(res);
-                            if(!userUpdated) return display400Error(res);
+                            if(err) return HttpResponses.display500Error(res);
+                            if(!userUpdated) return HttpResponses.display400Error(res);
                             return res.status(200).send({ user: userUpdated });
                         });
                     });
                     
                 } else {
-                    return displayCustom(res, 400, 'Contraseña incorrecta');
+                    return HttpResponses.displayCustom(res, 400, 'Contraseña incorrecta');
                 }
             });
         });
     },
+
 
 
     
@@ -209,16 +211,26 @@ const controller = {
     updateEmail: function(req, res){
         const userId = req.user.sub;
         const newCode = getVerificationCode();
-        Account.findOne({ user: userId }, (err, account) =>{
-            if(err) return display500Error(res);
-            if(!account) return display400Error(res);
+        const newEmail = req.body.email;
+        // Comprobar que haya ingresado el nuevo correo electrónico
+        if(newEmail == null) return HttpResponses.displayCustom(res, 400, 'Ingresa el nuevo correo electrónico.');
 
+        Account.findOne({ user: userId }, (err, account) =>{
+            if(err) return HttpResponses.display500Error(res);
+            if(!account) return HttpResponses.display400Error(res);
             const accountId = account._id;
-            Verification.findOneAndUpdate({account: accountId}, {code: newCode}, {new: true}, (err, verificationUpdated) => {
-                if(err) return display500Error(res);
-                if(!verificationUpdated) return display400Error(res);
+
+            // Crear nuevo documento de verificación 
+            const verification = new Verification();
+            verification.account = accountId;
+            verification.code = newCode;
+            verification.created_at = moment().unix();
+
+            verification.save((err, verificationStored) => {
+                if(err) return HttpResponses.display500Error(res);
+                if(!verificationStored) return HttpResponses.display400Error(res);
                 return res.status(200).send({
-                    message: 'Se ha enviado el nuevo código de verificación al nuevo correo'
+                    message: 'Se ha enviado el nuevo código de verificación a ' + newEmail
                 });
             });
         });
@@ -229,9 +241,6 @@ const controller = {
 
 
 };
-
-
-
 
 
 
@@ -275,10 +284,10 @@ function formatNickname(nickname){
 }
 
 function formatPassword(password, res, len){
-    if(password.length < len) return displayCustom(res, 400, 'La contraseña debe tener minimo '+len+' caracteres.');
-    if(!haveCapitalizeLetter(password)) return displayCustom(res, 400, 'La contraseña debe tener al menos una mayuscula.');
-    if(!haveNumber(password)) return displayCustom(res, 400, 'La contraseña debe tener números.');
-    if(!haveNoCapitalizeLetter(password)) return displayCustom(res, 400, 'La contraseña no tiene minusculas.');
+    if(password.length < len) return HttpResponses.displayCustom(res, 400, 'La contraseña debe tener minimo '+len+' caracteres.');
+    if(!haveCapitalizeLetter(password)) return HttpResponses.displayCustom(res, 400, 'La contraseña debe tener al menos una mayuscula.');
+    if(!haveNumber(password)) return HttpResponses.displayCustom(res, 400, 'La contraseña debe tener números.');
+    if(!haveNoCapitalizeLetter(password)) return HttpResponses.displayCustom(res, 400, 'La contraseña no tiene minusculas.');
 }
 
 
@@ -288,29 +297,6 @@ function getVerificationCode(){
 	return Math.round(Math.random() * (max-min) + min);
 }
 
-
-
-
-/*
-*
-* Funciones para mostrar mensajes de códigos de error http
-*
-*/
-function display500Error(res){
-    res.status(500).send({message: 'Error en el servidor. Vuelve a intentarlo más tarde.'});
-}
-
-function display404Error(res){
-    res.status(404).send({message: 'No se ha podido encontrar el contenido solicitado.'});
-}
-
-function display400Error(res){
-    res.status(400).send({message: 'No se ha podido interpretar la solicitud.'});
-}
-
-function displayCustom(res, status, message){
-    res.status(status).send({message});
-}
 
 
 
