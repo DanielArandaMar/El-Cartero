@@ -4,6 +4,9 @@ const bcrypt = require('bcrypt-nodejs');
 const jwt = require('../services/authentication');
 const saveUserService = require('../services/saveUser');
 const User = require('../models/user');
+const Account = require('../models/account');
+const Verification = require('../models/verification');
+const verification = require('../models/verification');
 
 const controller = {
 
@@ -99,7 +102,128 @@ const controller = {
             });
         });
 
+    },
+
+
+
+
+
+    /** ACTUALIZAR INFORMACION DEL USUARIO */
+    updateUserGeneralData: function(req, res){
+        let userId = req.user.sub;
+        let update = req.body;
+        /*
+        *   Excluir la información que no se actualizará
+        */
+        delete update.password;
+        delete update.email;
+        delete update.nickname;
+
+        User.findByIdAndUpdate(userId, update, {new: true}, (err, userUpdated) => {
+            if(err) return display500Error(res);
+            if(!userUpdated) return display400Error(res);
+            userUpdated.password = undefined;
+            userUpdated.email = undefined;
+            userUpdated.role = undefined;
+            return res.status(200).send({ user: userUpdated });
+        });
+    },
+
+
+
+
+
+    /** ACTUALIZAR NOMBRE DE USUARIO */
+    updateUserNickname: function(req, res){
+        const userId = req.user.sub;
+        const nickname = req.body.nickname;
+        const pipe = { $and: [{nickname: nickname}, {_id: {$ne: userId}}]};
+
+        if(nickname == null) return displayCustom(res, 400, 'Inserta tu nuevo nombre de usuario.');
+
+        // Validar el formato de nombre de usuario
+        const ValidateNicknameFormat = formatNickname(nickname);
+        if(!ValidateNicknameFormat) return displayCustom(res, 400, 'Formato de nombre de usuario incorrecto.');
+
+        User.find(pipe, (err, users) => {
+            if(err) return display500Error(res);
+            console.log(users.length);
+            /*
+            * COINCIDENCIA users.length > 0    NO HAY COINCIDENCIA users.length <= 0
+            */
+            if(users.length > 0) return displayCustom(res, 400, 'Nombre de usuario ya en uso.');
+            // Actualizar el nombre de usuario
+            User.findByIdAndUpdate(userId, {nickname: nickname}, {new: true}, (err, userUpdated) => {
+                if(err) return display500Error(res);
+                if(!userUpdated) return display400Error(res);
+                userUpdated.password = undefined;
+                userUpdated.email = undefined;
+                userUpdated.role = undefined;
+                return res.status(200).send({ user:userUpdated });
+            });
+        });
+
+    },
+
+
+
+
+
+    /** ACTUALIZAR CONTRASEÑA **/
+    updateUserPassword: function(req, res){
+        const userId = req.user.sub;
+        const oldPassword = req.body.oldPassword;
+        var newPassword = req.body.newPassword;
+
+        if(newPassword == null && oldPassword == null) return displayCustom(res, 400, 'Inserta los campos correspondientes.');
+
+        // Validar el formato de la contraseña
+        formatPassword(newPassword, res, 7);
+
+        User.findById(userId, (err, user) => {
+            if(err) return display500Error(res);
+            if(!user) return display400Error(res);
+            bcrypt.compare(oldPassword, user.password, (err, check) => {
+                if(check){
+                    // Actualizar la contraseña
+                    getPasswordHash(newPassword).then((value) => {
+                        newPassword = value.hash;
+                        User.findByIdAndUpdate(userId, {password: newPassword}, {new: true}, (err, userUpdated) => {
+                            if(err) return display500Error(res);
+                            if(!userUpdated) return display400Error(res);
+                            return res.status(200).send({ user: userUpdated });
+                        });
+                    });
+                    
+                } else {
+                    return displayCustom(res, 400, 'Contraseña incorrecta');
+                }
+            });
+        });
+    },
+
+
+    
+
+    /** ACTUALIZAR EL CORREO ELECTRONICO */
+    updateEmail: function(req, res){
+        const userId = req.user.sub;
+        const newCode = getVerificationCode();
+        Account.findOne({ user: userId }, (err, account) =>{
+            if(err) return display500Error(res);
+            if(!account) return display400Error(res);
+
+            const accountId = account._id;
+            Verification.findOneAndUpdate({account: accountId}, {code: newCode}, {new: true}, (err, verificationUpdated) => {
+                if(err) return display500Error(res);
+                if(!verificationUpdated) return display400Error(res);
+                return res.status(200).send({
+                    message: 'Se ha enviado el nuevo código de verificación al nuevo correo'
+                });
+            });
+        });
     }
+
 
 
 
@@ -155,6 +279,13 @@ function formatPassword(password, res, len){
     if(!haveCapitalizeLetter(password)) return displayCustom(res, 400, 'La contraseña debe tener al menos una mayuscula.');
     if(!haveNumber(password)) return displayCustom(res, 400, 'La contraseña debe tener números.');
     if(!haveNoCapitalizeLetter(password)) return displayCustom(res, 400, 'La contraseña no tiene minusculas.');
+}
+
+
+function getVerificationCode(){
+    let min = 10000;
+	let max = 90000;
+	return Math.round(Math.random() * (max-min) + min);
 }
 
 
