@@ -6,6 +6,7 @@ const secret_key = '13795523445';
 
 exports.createToken = function(user){
     let payload = {
+        sub: user._id,
         name: user.name,
         surname: user.surname,
         nickname: user.nickname,
