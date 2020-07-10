@@ -3,6 +3,9 @@
 const bcrypt = require('bcrypt-nodejs');
 const jwt = require('../services/authentication');
 const moment = require('moment');
+const fs = require('fs');
+const path = require('path');
+
 const saveUserService = require('../services/saveUser');
 const HttpResponses = require('../services/httpResponses');
 const User = require('../models/user');
@@ -234,10 +237,37 @@ const controller = {
                 });
             });
         });
+    },
+
+
+    /** SUBIR LA IMAGEN DE PERFIL DEL USUARIO **/
+    uploadImage: function(req, res){
+        const userId = req.user.sub;
+        if(req.files){
+            // Encontrar el nombre de la imagen
+            let file_path = req.files.imageUser.path;
+            let split_path = file_path.split("\\");
+            let file_name = split_path[2];
+
+            let ext_split = file_path.split('\.');
+            let file_ext = ext_split[1];
+
+            if(file_ext == 'jpg' || file_ext == 'png' || file_ext == 'gif' || file_ext == 'jpeg'){
+                // actualizar imagen del usuario
+                User.findByIdAndUpdate(userId, {image: file_name}, {new: true}, (err, userUpdated) => {
+                    if(err) return HttpResponses.display500Error(res);
+                    if(!userUpdated) return HttpResponses.display400Error(res);
+                    userUpdated.password = undefined;
+                    return res.status(200).send({ user: userUpdated });
+                });
+            } else {{
+                removeImageUpload(file_path, res, 'Extensión de la imagen no válida.');
+            }}
+
+        } else {
+            return displayCustom(res, 400, 'No has seleccionado una imagen.')
+        }
     }
-
-
-
 
 
 };
@@ -247,6 +277,19 @@ const controller = {
 
 
 /**** ****  FUNCIONALIDADES DE APOYO **** ****/
+
+
+
+/*
+*
+* Función para eliminar una imagen de la carpeta uploads
+*
+*/
+function removeImageUpload(path, res, msg){
+    fs.unlink(path, (err) => {
+        return HttpResponses.displayCustom(res, 400, msg);
+    });
+}
 
 
 
