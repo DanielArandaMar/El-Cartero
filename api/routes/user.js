@@ -28,4 +28,7 @@ api.put('/user/update-email', auth_md.auth, UserController.updateEmail);
 // SUBIR FOTO DE PERFIL DEL USUARIO
 api.post('/user/upload-image', [auth_md.auth, multipart_md], UserController.uploadImage);
 
+// OBTENER FOTO DE PERFIL DEL USUARIO
+api.get('/user/get-image/:imageFile', UserController.getUserImage);
+
 module.exports = api;

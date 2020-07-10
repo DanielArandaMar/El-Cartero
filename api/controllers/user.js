@@ -267,6 +267,19 @@ const controller = {
         } else {
             return displayCustom(res, 400, 'No has seleccionado una imagen.')
         }
+    },
+
+    /** OBTENER LA IMAGEN DEL USUARIO **/
+    getUserImage: function(req, res){
+        const imageFile = req.params.imageFile;
+        const file_path = './uploads/image-users/' + imageFile;
+        fs.exists(file_path, (check) => {
+            if(check){
+                return res.sendFile(path.resolve(file_path));
+            } else {
+                return HttpResponses.displayCustom(res, 400, 'La imagen no existe.');
+            }
+        });
     }
 
 
