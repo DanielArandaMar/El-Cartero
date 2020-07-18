@@ -11,7 +11,7 @@ exports.auth = function(req, res, next){
         var payload = jwt.decode(token, secret_key);
         if(payload.exp <= moment().unix()) return res.status(400).send({message: 'Sesión ya expirada'});
     }catch(ex){
-        return res.status(400).send({message: 'Token de autenticación no válida'});
+        return res.status(400).send({message: 'Token de autenticación no válido'});
     }
     req.user = payload;
     next();
