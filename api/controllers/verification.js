@@ -5,7 +5,7 @@ const Account = require('../models/account');
 
 const controller = {
 
-    /** DEJAR EN NULO EL CODIGO DE VERIFICACIÓN */
+    /** ELIMINAR DOCUMENTO DE VERIFICACIÓN */
     deleteVerification: function(req,res){
         const accountId = req.params.accountId;
         const userId = req.user.sub;
