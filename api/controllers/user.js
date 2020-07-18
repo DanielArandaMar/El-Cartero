@@ -38,9 +38,9 @@ const controller = {
             // Validar el formato del nombre de usuario
             const ValidateNicknameFormat = formatNickname(user.nickname);
             if(!ValidateNicknameFormat) return HttpResponses.displayCustom(res, 400, 'Formato de nombre de usuario incorrecto.');
-            
 
-            /* 
+
+            /*
             *   Validar la escritura de la contraseña (formato)
             *   Encriptar la contraseña del usuario
             *   Validar si el 'nickname' se repite'
@@ -49,7 +49,7 @@ const controller = {
             formatPassword(user.password, res, 7);
             getPasswordHash(user.password).then((value) => {
                 user.password = value.hash;
-                
+
                 saveUserService.saveUserInDatabase(user).then((value) => {
                     if(value.user != null && value.account != null && value.verification != null){
                         return res.status(200).send({
@@ -60,12 +60,12 @@ const controller = {
                     } else {
                         return HttpResponses.displayCustom(res, 400, 'El nombre de usuario ya esta en uso.');
                     }
-                   
+
                 });
-                
+
             });
 
-            
+
         } else {
             return HttpResponses.displayCustom(res, 400, 'Por favor ingresa los campos correspondientes.');
         }
@@ -83,21 +83,21 @@ const controller = {
         * extraInfo -> Nombre de usuario o correo eletrónico
         */
         var password = params.password;
-        var extraInfo = params.nickname; 
+        var extraInfo = params.nickname;
 
         const pipe = {$or: [{nickname: extraInfo}, {email: extraInfo}]};
 
         User.findOne(pipe, (err, user) => {
             if(err) return HttpResponses.display500Error(res);
             if(!user) return HttpResponses.displayCustom(res, 400, 'Credenciales incorrectas');
-            
+
             bcrypt.compare(password, user.password, (err, check) => {
                 if(check){
                     /* CONTRASEÑA CORRECTA ! */
                     if(params.getToken){
                         return res.status(200).send({ token: jwt.createToken(user) });
                     } else {
-                        
+
                         return res.status(200).send({ user });
                     }
                 } else {
@@ -198,7 +198,7 @@ const controller = {
                             return res.status(200).send({ user: userUpdated });
                         });
                     });
-                    
+
                 } else {
                     return HttpResponses.displayCustom(res, 400, 'Contraseña incorrecta');
                 }
@@ -208,7 +208,7 @@ const controller = {
 
 
 
-    
+
 
     /** ACTUALIZAR EL CORREO ELECTRONICO */
     updateEmail: function(req, res){
@@ -223,11 +223,11 @@ const controller = {
             if(!account) return HttpResponses.display400Error(res);
             const accountId = account._id;
 
-            // Crear nuevo documento de verificación 
+            // Crear nuevo documento de verificación
             const verification = new Verification();
             verification.account = accountId;
-            verification.code = newCode;
-            verification.created_at = moment().add(1, 'days').unix(); 
+            verification.code = newCode; // asignamos el nuevo código de verificación
+            verification.created_at = moment().add(2, 'days').unix();
 
             verification.save((err, verificationStored) => {
                 if(err) return HttpResponses.display500Error(res);
@@ -238,6 +238,8 @@ const controller = {
             });
         });
     },
+
+
 
 
     /** SUBIR LA IMAGEN DE PERFIL DEL USUARIO **/
@@ -255,19 +257,22 @@ const controller = {
             if(file_ext == 'jpg' || file_ext == 'png' || file_ext == 'gif' || file_ext == 'jpeg'){
                 // actualizar imagen del usuario
                 User.findByIdAndUpdate(userId, {image: file_name}, {new: true}, (err, userUpdated) => {
-                    if(err) return HttpResponses.display500Error(res);
-                    if(!userUpdated) return HttpResponses.display400Error(res);
+                    if(err) removeUploadImage(file_path, res, 'Error en el servidor. Vuelve a intentarlo más tarde.', 500);
+                    if(!userUpdated) removeUploadImage(file_path, res, 'Algo salió mal. No se ha establecido tu imagen seleccionada.', 400);
                     userUpdated.password = undefined;
                     return res.status(200).send({ user: userUpdated });
                 });
             } else {{
-                removeImageUpload(file_path, res, 'Extensión de la imagen no válida.');
+                removeUploadImage(file_path, res, 'Extensión de la imagen no válida.', 400);
             }}
 
         } else {
             return displayCustom(res, 400, 'No has seleccionado una imagen.')
         }
     },
+
+
+
 
     /** OBTENER LA IMAGEN DEL USUARIO **/
     getUserImage: function(req, res){
@@ -288,7 +293,6 @@ const controller = {
 
 
 
-
 /**** ****  FUNCIONALIDADES DE APOYO **** ****/
 
 
@@ -298,9 +302,9 @@ const controller = {
 * Función para eliminar una imagen de la carpeta uploads
 *
 */
-function removeImageUpload(path, res, msg){
+function removeUploadImage(path, res, msg, code){
     fs.unlink(path, (err) => {
-        return HttpResponses.displayCustom(res, 400, msg);
+        return HttpResponses.displayCustom(res, code, msg);
     });
 }
 
