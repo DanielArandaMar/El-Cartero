@@ -9,7 +9,7 @@ const MailSchema = Schema({
     image: String,
     anonymouse: Boolean,
     deleted_from: Boolean,
-    delted_to: Boolean,
+    deleted_to: Boolean,
     created_at: String
 });
 module.exports = mongoose.model('Mail', MailSchema);
