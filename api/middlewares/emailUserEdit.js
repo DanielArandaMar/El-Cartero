@@ -13,10 +13,14 @@ exports.verify = function(req, res, next){
             if(err) return HttpResponses.display500Error(res);
    			if(!verification) return HttpResponses.display400Error(res);
             if(verification.created_at <= moment().unix()){
-                // Código expirado
+                // Código de verificación expirado
             	Verification.find({ _id: verification._id }).remove((err, deleted) => {
-            		
+                    if(err) return HttpResponses.display500Error(res);
+                    if(!deleted) return HttpResponses.display400Error(res);
+                    return res.status(200).send({ message: 'Tu código de verificación ha expirado' });
             	});
+            } else {
+                next();
             } 
         });
     });
