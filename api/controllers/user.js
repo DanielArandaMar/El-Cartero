@@ -5,6 +5,7 @@ const jwt = require('../services/authentication');
 const moment = require('moment');
 const fs = require('fs');
 const path = require('path');
+const mailer = require('../services/mailer');
 
 const saveUserService = require('../services/saveUser');
 const HttpResponses = require('../services/httpResponses');
@@ -52,6 +53,16 @@ const controller = {
 
                 saveUserService.saveUserInDatabase(user).then((value) => {
                     if(value.user != null && value.account != null && value.verification != null){
+
+                        // CONFIGURAR EL ENVIO DEL CORREO ELECTRÓNICO
+                        let mailOptions = {
+                            to: user.email, // list of receivers
+                            subject: "Hola " +  user.name + ' ' + user.surname, // Subject line
+                            text: "Tu código de verificación es " + value.verification.code // plain text body
+                        };
+                        // CONFIGURAR EL ENVIO DEL CORREO ELECTRÓNICO
+                        mailer.sendMail(mailOptions);
+
                         return res.status(200).send({
                             user: value.user,
                             account: value.account,
@@ -211,6 +222,9 @@ const controller = {
 
 
     /** ACTUALIZAR EL CORREO ELECTRONICO */
+    /*
+    *   OJO -> aqui se crea el documento de verificación
+    */
     updateEmail: function(req, res){
         const userId = req.user.sub;
         const newCode = getVerificationCode();
@@ -227,11 +241,22 @@ const controller = {
             const verification = new Verification();
             verification.account = accountId;
             verification.code = newCode; // asignamos el nuevo código de verificación
-            verification.created_at = moment().add(2, 'days').unix();
+            verification.new_email = newEmail;
+            verification.created_at = moment().add(2, 'days').unix(); // dos dias después se caducará el código
 
             verification.save((err, verificationStored) => {
                 if(err) return HttpResponses.display500Error(res);
                 if(!verificationStored) return HttpResponses.display400Error(res);
+
+                // CONFIGURAR EL ENVIO DEL CORREO ELECTRÓNICO
+                let mailOptions = {
+                    to: newEmail, // list of receivers
+                    subject: "Cambiar correo electrónico", // Subject line
+                    text: "Tu nuevo código de verificación es " + newCode // plain text body
+                };
+                // CONFIGURAR EL ENVIO DEL CORREO ELECTRÓNICO
+                mailer.sendMail(mailOptions);
+
                 return res.status(200).send({
                     message: 'Se ha enviado el nuevo código de verificación a ' + newEmail
                 });
@@ -239,6 +264,44 @@ const controller = {
         });
     },
 
+
+    /** CAMBIAR EL CORREO ELECTRÓNICO **/
+    /*
+     *  En este punto, ya existe un documento de verificación
+    */
+    changeEmailUser: function(req, res){
+        const userId = req.user.sub;
+        const code = req.params.code; // código de verificación
+
+        Account.findOne({user: userId}, (err, account) => {
+           if(err) return HttpResponses.display500Error(res);
+           if(!account) return HttpResponses.display400Error(res);
+           const accountId = account._id; // recoger el id de la cuenta
+            Verification.findOne({account: accountId}, (err, verification) => {
+                if(err) return HttpResponses.display500Error(res);
+                if(!verification) return HttpResponses.display400Error(res);
+
+                // validar que las claves sean iguales
+                if(verification.code != code) return HttpResponses.displayCustom(res, 400, 'Código de verificación incorrecta.');
+
+                // cambiar el correo electrónico
+                const verificationNewEmail =  verification.new_email;
+                User.findByIdAndUpdate(userId, {email: verificationNewEmail}, {new: true}, (err, userUpdated) => {
+                    if(err) return HttpResponses.display500Error(res);
+                    if(!userUpdated) return HttpResponses.display400Error(res);
+                    userUpdated.password = undefined;
+
+                    // eliminar documento de verificación
+                    Verification.find({ _id: verification._id }).remove((err, deleted) => {
+                        if(err) return HttpResponses.display500Error(res);
+                        if(!deleted) return HttpResponses.display400Error(res);
+
+                        return res.status(200).send({ user: userUpdated });
+                    });
+                });
+            });
+        });
+    },
 
 
 

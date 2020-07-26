@@ -8,7 +8,7 @@ const controller = {
 
 	/**  CAMBIAR LA CUENTA DE INACTIVA A ACTIVA **/
 	changeToActive: function(req, res){
-		const insertedCode = req.body.code;
+		const insertedCode = req.params.code;
 		const userId = req.user.sub;
 
 		Account.findOne({ user: userId }, (err, account) => {
