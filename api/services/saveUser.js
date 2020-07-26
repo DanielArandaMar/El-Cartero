@@ -12,7 +12,7 @@ const Verification = require('../models/verification');
 *
 */
 
-exports.saveUserInDatabase = async function(user){
+exports.saveUserInDatabase = async function(user) {
 
     /*
     *  Encontrar usuiarios con 'nickname' similares
@@ -55,14 +55,17 @@ if(!repetedNickname){
     // Guardar el usuario en 'cuentas' en verificación (verification)
     const verification = new Verification();
     verification.account = saveAcc._id;
-    verification.code = getVerificationCode();
-    verification.created_at = moment().unix();
+    verification.code = getVerificationCode(); // Generar y asignar código de verificación
+    verification.new_email = null; // null -> no queremos actualizar un mail nuevo
+    verification.created_at = moment().add(2, 'days').unix(); // Agregamos dos dias para que expire
+
     const saveVerification = await new Promise(function(resolve, reject){
         verification.save((err, verificationStored) => {
             if(err) reject(err);
             resolve(verificationStored);
         });
     });
+
 
     return {
         user: userRegister,
