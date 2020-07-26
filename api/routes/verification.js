@@ -2,10 +2,13 @@
 
 const express = require('express');
 const api = express.Router();
-const auth_md = require('../middlewares/authenticated');
 const VerificationController = require('../controllers/verification');
 
+const auth_md = require('../middlewares/authenticated');
+const md_auth_active = require('../middlewares/activeAccount');
+
+
 /* ELIMINAR DOCUMENTO DE VERIFICACION */
-api.delete('/verification/delete/:accountId', auth_md.auth, VerificationController.deleteVerification);
+api.delete('/verification/delete/:accountId', [auth_md.auth, md_auth_active.verifyActiveAcc], VerificationController.deleteVerification);
 
 module.exports = api;
